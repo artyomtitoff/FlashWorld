@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FlashWorld — создание 3D-сцен по фото</title>
+  <meta name="description" content="Создавайте 3D-сцены за секунды из одного фото. FlashWorld — генерация Gaussian Splatting сцен." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.178.0/three.module.js",
+        "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/0.1.9/spark.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="logo">FW</div>
+        <div>
+          <h1>FlashWorld</h1>
+          <p>3D-сцены по фотографии — за секунды</p>
+        </div>
+        <span class="badge-demo">Demo • без GPU работает в демо-режиме</span>
+      </div>
+      <nav class="nav-links">
+        <a class="btn-ghost" href="https://arxiv.org/pdf/2510.13678" target="_blank">Paper</a>
+        <a class="btn-ghost" href="https://github.com/artyomtitoff/FlashWorld" target="_blank">GitHub</a>
+        <button id="btn-how" class="btn-ghost">Как это работает?</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="app">
+    <section class="hero">
+      <div>
+        <h2>Преврати <span>фото в 3D-мир</span> за 7 секунд</h2>
+        <p>Загрузи фотографию, опиши сцену текстом, настрой траекторию камеры — и получи готовую 3D-сцену в формате SPZ/PLY. Работает на FlashWorld (ICLR 2026 oral) с рендерингом Gaussian Splatting.</p>
+        <div class="hero-stats">
+          <div class="stat"><b>7с</b><span>на A100 • 4с на H100</span></div>
+          <div class="stat"><b>SPZ / PLY / MP4</b><span>экспорт</span></div>
+          <div class="stat"><b>24 кадра</b><span>траектория</span></div>
+          <div class="stat"><b>WebGL</b><span>просмотр в браузере</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Быстрый старт</h3><small>3 шага</small></div>
+        <div class="card-body">
+          <div class="tip" style="margin-bottom:10px">💡 Подсказка: выбери пример из галереи справа, чтобы сразу увидеть результат, или загрузи своё фото.</div>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <div class="step-num">1</div>
+            <div><b style="font-size:13px">Загрузи фото или введи промпт</b><div class="muted small">Можно только текст, только фото, или вместе</div></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <div class="step-num">2</div>
+            <div><b style="font-size:13px">Настрой камеру и траекторию</b><div class="muted small">FOV, разрешение, путь облета. Используй WASD + мышь, <span class="kbd">Space</span> — записать камеру</div></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div class="step-num">3</div>
+            <div><b style="font-size:13px">Сгенерируй и смотри</b><div class="muted small">Просмотр в браузере + скачивание SPZ/PLY</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <!-- Left: Controls -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="card">
+          <div class="card-header">
+            <h3>1 — Фото и промпт</h3>
+            <span class="chip" id="image-status">нет фото</span>
+          </div>
+          <div class="card-body">
+            <div class="label">Фото (опционально, но рекомендуется)</div>
+            <label class="dropzone" id="dropzone">
+              <input id="file-input" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" />
+              <div class="icon">🖼️</div>
+              <b>Перетащи фото сюда или нажми</b>
+              <span>PNG/JPG/WebP, до 10MB. Авто-кроп под выбранное разрешение.</span>
+            </label>
+            <div class="preview" id="preview">
+              <img id="preview-img" alt="" />
+              <div class="meta"><b id="preview-name">—</b><span id="preview-size">—</span><button id="btn-remove-image" class="btn btn-secondary btn-sm">Удалить</button></div>
+            </div>
+
+            <div class="label" style="margin-top:14px">Текстовый промпт</div>
+            <textarea id="text-prompt" class="textarea" placeholder="Например: уютная деревянная хижина в лесу, мягкий свет, туман... Добавь [Static] автоматически."></textarea>
+            <div class="small muted" style="margin-top:6px">Можно оставить пустым, если есть фото. Для лучшего качества опиши стиль, освещение, детали.</div>
+
+            <div class="grid2" style="margin-top:10px">
+              <div>
+                <div class="label">Индекс фото в траектории</div>
+                <div class="range"><input id="image-index" type="range" min="0" max="12" value="0" /><output id="image-index-out">0</output></div>
+                <div class="small muted">На каком кадре находится исходное фото</div>
+              </div>
+              <div>
+                <div class="label">Backend</div>
+                <input id="backend-url" class="input" value="" placeholder="http://localhost:7860" />
+                <div class="small muted">Оставь пустым для текущего сервера</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>2 — Настройки генерации</h3></div>
+          <div class="card-body">
+            <div class="grid2">
+              <div>
+                <div class="label">FOV</div>
+                <div class="range"><input id="fov" type="range" min="30" max="90" value="60" /><output id="fov-out">60°</output></div>
+              </div>
+              <div>
+                <div class="label">Разрешение</div>
+                <select id="resolution" class="select">
+                  <option value="24x480x704">24×480×704 (горизонтально)</option>
+                  <option value="24x704x480">24×704×480 (вертикально)</option>
+                  <option value="16x480x704">16×480×704 (быстрее)</option>
+                  <option value="16x704x480">16×704×480</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="label" style="margin-top:12px">HF Token (если бэкенд на HuggingFace Spaces)</div>
+            <input id="hf-token" class="input" type="password" placeholder="hf_... (опционально, для ZeroGPU)" />
+
+            <div class="hr"></div>
+            <div class="label">Траектория камеры</div>
+            <div class="grid2">
+              <select id="trajectory-mode" class="select">
+                <option value="manual">Ручная (WASD + Space)</option>
+                <option value="template">Шаблон</option>
+                <option value="json">Загрузить JSON</option>
+              </select>
+              <select id="template-type" class="select">
+                <option value="Move Forward">Движение вперёд</option>
+                <option value="Move Backward">Движение назад</option>
+                <option value="Move Left">Влево</option>
+                <option value="Move Right">Вправо</option>
+                <option value="Orbit Left 15°">Орбита влево 15°</option>
+                <option value="Orbit Right 15°">Орбита вправо 15°</option>
+              </select>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button id="btn-fix" class="btn btn-secondary btn-sm">Зафиксировать камеру</button>
+              <button id="btn-gen-traj" class="btn btn-secondary btn-sm">Сгенерировать траекторию</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button id="btn-load-traj" class="btn btn-secondary btn-sm">Загрузить траекторию JSON</button>
+              <button id="btn-save-traj" class="btn btn-secondary btn-sm">Сохранить траекторию</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button id="btn-clear-cams" class="btn btn-secondary btn-sm">Очистить (оставить 1)</button>
+              <button id="btn-save-all" class="btn btn-secondary btn-sm">Скачать All JSON</button>
+            </div>
+            <input id="json-input" type="file" accept=".json" class="hidden" />
+            <div class="tip" style="margin-top:10px">
+              Управление: <span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span> + <span class="kbd">R</span><span class="kbd">F</span> + <span class="kbd">Q</span><span class="kbd">E</span> — движение/вращение, <span class="kbd">Space</span> — записать камеру. Минимум 2 камеры для генерации.
+            </div>
+
+            <div class="label">Записанные камеры (<span id="cam-count">0</span>)</div>
+            <div id="cam-list" class="cam-list"></div>
+
+            <div class="label">Превью траектории</div>
+            <div class="range"><input id="scrub" type="range" min="0" max="100" value="0" /><output id="scrub-out">0%</output></div>
+            <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px">
+              <input id="chk-vis-cams" type="checkbox" checked /> Показывать камеры
+              <input id="chk-vis-interp" type="checkbox" checked style="margin-left:12px"/> Интерполированные
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Галерея примеров</h3><small>нажми чтобы загрузить</small></div>
+          <div class="card-body">
+            <div id="examples-grid" class="gallery"></div>
+            <div class="small muted" style="margin-top:8px">Примеры из <code>/examples/*.json</code> — содержат готовые траектории + промпты.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Viewer -->
+      <div class="viewer-wrap" id="viewer-wrap">
+        <div class="viewer-toolbar">
+          <div style="display:flex;gap:8px;align-items:center">
+            <b style="font-size:13px">3D Просмотр</b>
+            <span class="pill" id="viewer-info">камер 0 • готовность: настрой</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button id="btn-reset-view" class="btn btn-secondary btn-sm">Сбросить вид</button>
+            <button id="btn-fullscreen" class="btn btn-secondary btn-sm">На весь экран</button>
+          </div>
+        </div>
+        <div class="viewer-canvas" id="viewer-canvas">
+          <div class="viewer-empty" id="viewer-empty">
+            <div class="cube">🧊</div>
+            <b style="color:var(--text)">Сцена ещё не сгенерирована</b>
+            <div class="small muted" style="margin-top:6px">Визуализация появится здесь. Перетащи фото, настрой траекторию и нажми «Сгенерировать».</div>
+            <div style="margin-top:12px;display:flex;gap:8px;justify-content:center">
+              <button id="btn-demo-scene" class="btn btn-secondary btn-sm">Показать демо-сцену</button>
+            </div>
+          </div>
+          <!-- canvas injected here -->
+        </div>
+        <div class="viewer-stats" id="viewer-stats">
+          <span class="pill">💾 SPZ: <b id="stat-size">—</b></span>
+          <span class="pill">⏱️ Время: <b id="stat-time">—</b></span>
+          <span class="pill">📷 FOV: <b id="stat-fov">60°</b></span>
+        </div>
+        <div class="progress-overlay" id="progress-overlay">
+          <div class="progress-card">
+            <div style="font-weight:800;margin-bottom:6px" id="progress-title">Генерация сцены...</div>
+            <div class="progress-bar"><i id="progress-bar"></i></div>
+            <div class="progress-text" id="progress-text">0% • подготовка</div>
+            <div class="badges">
+              <span class="pill" id="badge-queue">очередь: —</span>
+              <span class="pill" id="badge-time">—</span>
+            </div>
+            <div class="small muted" id="progress-msg" style="margin-top:8px">Пожалуйста, подожди, создаём 3D-гауссианы...</div>
+            <button id="btn-cancel" class="btn btn-secondary btn-sm" style="margin-top:10px">Отменить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Generate + Export -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="card" style="border-color:rgba(124,58,237,0.35)">
+          <div class="card-header"><h3>3 — Генерация</h3><span class="chip">FlashWorld</span></div>
+          <div class="card-body">
+            <button id="btn-generate" class="btn btn-primary">✨ Сгенерировать сцену</button>
+            <div class="small muted" style="margin-top:8px">Требуется минимум 2 камеры. Если нет фото — введи текст.</div>
+            <div class="hr"></div>
+            <div class="label">Что происходит?</div>
+            <div class="tip">Модель генерирует latent-видео, декодирует в Pixel-Aligned 3DGS и экспортирует SPZ. В демо-режиме показывается симуляция (без GPU).</div>
+            <div class="label">Статус</div>
+            <div id="gen-status" class="tip">Готов к генерации</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Экспорт</h3><small>после генерации</small></div>
+          <div class="card-body">
+            <div class="row"><button id="btn-download-spz" class="btn btn-secondary btn-block" disabled>⬇️ Скачать SPZ</button></div>
+            <div class="row" style="margin-top:8px"><button id="btn-download-json" class="btn btn-secondary btn-block">⬇️ Скачать JSON (параметры)</button></div>
+            <div class="small muted" style="margin-top:8px">SPZ — сжатый формат для Spark/Three.js. PLY/MP4 доступны при запуске CLI: <code>python cli.py --spz --ply --video</code></div>
+            <div class="hr"></div>
+            <div class="label">Поделиться</div>
+            <div class="row">
+              <button id="btn-copy-link" class="btn btn-secondary btn-sm">Копировать ссылку</button>
+              <button id="btn-share" class="btn btn-secondary btn-sm">Поделиться</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Справка</h3></div>
+          <div class="card-body small muted" style="line-height:1.6">
+            <b style="color:var(--text)">Требования к фото:</b> чёткое, без сильного размытия, желательно с перспективой (улица, комната, природа). Фото автоматически кропается под выбранное разрешение.<br/><br/>
+            <b style="color:var(--text)">Траектория:</b> 2–12 камер. Чем шире движение, тем больше новых областей дорисует модель. Для орбиты используй шаблон Orbit.<br/><br/>
+            <b style="color:var(--text)">Текст:</b> пиши на английском для лучшего качества (модель обучена на англ. промптах). Пример: “cozy mountain cabin, sunset, ultra detailed”.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="statusbar" id="statusbar">
+      <span><b id="status-msg">Готов</b> • камер: <b id="status-cam">0</b> • статус: <b id="status-state">ожидание</b></span>
+      <span class="small muted">FlashWorld • ICLR 2026 oral • <a href="https://huggingface.co/imlixinyang/FlashWorld" target="_blank">checkpoint</a></span>
+    </div>
+
+    <footer class="footer">
+      <span>© FlashWorld Site • Сделано на основе <a href="https://github.com/artyomtitoff/FlashWorld" target="_blank">artyomtitoff/FlashWorld</a> • Лицензия Apache-2.0</span>
+      <span>Автор сайта: Arena AI • <a href="#" id="link-api">API</a> • <a href="#" id="link-health">health</a></span>
+    </footer>
+  </main>
+
+  <!-- Dialog -->
+  <div class="dialog" id="dialog-how">
+    <div class="dialog-card">
+      <div class="dialog-head"><b>Как это работает</b><button class="btn-ghost" id="btn-close-how">✕</button></div>
+      <div class="dialog-body small muted" style="line-height:1.7">
+        <b style="color:var(--text)">FlashWorld</b> — feed-forward модель генерации 3D-сцен из одного изображения/текста. Архитектура: Wan2.2-TI2V-5B трансформер генерирует латенты видео + фичи, декодер восстанавливает Pixel-Aligned 3D Gaussians (по 2 точки на пиксель), рендер через gsplat.<br/><br/>
+        <b style="color:var(--text)">Пайплайн сайта:</b> ты задаёшь камеры (позиция + кватернион + fx/fy/cx/cy), разрешение [N,H,W], промпты. Бэкенд кодирует текст через T5, делает 4 шага denoising с feedback, рендерит SPZ, который смотрится в браузере через Spark.<br/><br/>
+        <b style="color:var(--text)">Демо-режим:</b> если на сервере нет GPU/чекпоинта (проверь <code>/api/health</code>), генерация симулируется — создаётся процедурный SPZ для предпросмотра. Для реальной генерации запусти бэкенд с <code>FLASHWORLD_DEMO=0 python site/backend/server.py</code> и весом <code>model.ckpt</code> с HuggingFace.<br/><br/>
+        <b style="color:var(--text)">CLI:</b> <code>python cli.py --input_dir ./examples --output_dir ./out --spz --ply --video</code> даёт лучшее качество (без компрессии).<br/>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
