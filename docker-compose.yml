@@ -1,0 +1,26 @@
+version: "3.8"
+services:
+  flashworld-site:
+    build: .
+    image: flashworld-site:latest
+    ports:
+      - "7860:7860"
+    environment:
+      - FLASHWORLD_DEMO=1   # 0 for real GPU inference
+      - PORT=7860
+      # - FLASHWORLD_CKPT=/app/models/model.ckpt
+      # - HUGGINGFACE_TOKEN=hf_xxx
+    volumes:
+      - ./webapp:/app/webapp
+      - flashworld_cache:/tmp/flashworld_site
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  flashworld_cache:
